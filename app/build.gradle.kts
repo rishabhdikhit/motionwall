@@ -20,8 +20,8 @@ android {
         applicationId = "app.motionwall"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.5"
+        versionCode = 6
+        versionName = "0.6"
     }
 
     signingConfigs {
@@ -66,6 +66,10 @@ dependencies {
     implementation("androidx.media3:media3-effect:$media3")       // RgbFilter grayscale
     implementation("androidx.media3:media3-common:$media3")
     implementation("androidx.media3:media3-transformer:$media3")  // import: trim/mute/compress
+    implementation("androidx.media3:media3-ui:$media3")           // PlayerView for the hero preview
+
+    implementation("androidx.navigation:navigation-compose:2.8.4")
+    implementation("androidx.core:core-splashscreen:1.0.1")
 
     implementation(platform("androidx.compose:compose-bom:2024.10.01"))
     implementation("androidx.compose.ui:ui")
