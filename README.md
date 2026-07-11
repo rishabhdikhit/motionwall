@@ -1,19 +1,33 @@
 # MotionWall
 
-Battery-first video **home-screen** wallpaper for Android. A looping, muted clip renders
-behind your real launcher (icons/widgets untouched) via a system `WallpaperService` — and
-**stops decoding the instant the home screen isn't visible**. Ported from the macOS
-Wallpaper-Sync "moving wallpaper" project.
+**Battery-first video home-screen wallpaper for Android.** A looping, muted clip renders
+behind your real launcher — icons, widgets and layout untouched — via a system
+`WallpaperService`, and **stops decoding the instant the home screen isn't visible.**
+Ported from the macOS Wallpaper-Sync "moving wallpaper" project.
+
+Not a launcher. Not an overlay. The actual system wallpaper, so your home screen is
+exactly as you left it — just alive.
+
+## Download
+
+<a href="https://github.com/rishabhdikhit/motionwall/releases/latest/download/MotionWall.apk">
+  <img src="docs/download-qr.png" width="200" alt="Scan to download the latest MotionWall APK">
+</a>
+
+**[⬇ Download the latest APK](https://github.com/rishabhdikhit/motionwall/releases/latest/download/MotionWall.apk)**
+— or scan the QR. Open it on your phone, allow install from unknown sources. Android 8+.
 
 ## What it does
 
-- Real system wallpaper (`WallpaperService`) — not a launcher, not an overlay.
-- Plays **only** while home is visible; pauses (holds last frame, 0 decode) on app
-  foreground / screen off. No wake lock.
-- Live **grayscale** toggle (Media3 `RgbFilter`) for the Nothing mono aesthetic.
-- Battery rules: pause in battery-saver, pause on battery, freeze below 15%.
-- Import local videos (picker or share-sheet) → muted + downscaled via Media3 Transformer.
-- Library grid: pick / preview / delete clips.
+- **Real system wallpaper** — renders behind your launcher; nothing gets replaced or re-laid-out.
+- **Battery-honest** — plays only while home is visible; pauses (holds the last frame, zero
+  decode) when any app is foreground or the screen is off. Never holds a wake lock.
+- **Grayscale** — live mono toggle (Media3 `RgbFilter`) for the Nothing aesthetic.
+- **Fit / Fill** — show the whole clip or crop-to-fill.
+- **Import FPS** — re-encode imported clips to 30 / 24 / 15 fps: fewer frames, less decode,
+  better battery.
+- **Import** local videos via picker or share-sheet (muted + downscaled by Media3 Transformer).
+- **Library** — pick / preview / delete clips.
 
 Home-screen only by design — never animates the lock screen.
 
@@ -25,20 +39,23 @@ export JAVA_HOME=/opt/homebrew/opt/openjdk@17 && export PATH="$JAVA_HOME/bin:$PA
 ./gradlew assembleRelease    # signed with the stable MotionWall key
 ```
 
-Signing: `keystore.properties` + `release.keystore` (both gitignored). A fresh clone
+Signing uses `keystore.properties` + `release.keystore` (both gitignored). A fresh clone
 without them falls back to debug signing.
 
 ## Architecture
 
-- `VideoWallpaperService.kt` — the engine. One `refreshPlayback()` policy: play iff
-  `visible && !powerPaused`. Debounced `onVisibilityChanged`, power/battery receivers,
-  center-crop fill + optional grayscale through the Media3 effect pipeline.
-- `VideoImporter.kt` — Media3 Transformer: strip audio + cap to 1080p.
-- `Settings.kt` — SharedPreferences schema; the wallpaper folder *is* the library (no DB).
-- `MainActivity.kt` — Compose UI (set-flow, toggles, library grid).
+| File | Role |
+|------|------|
+| `VideoWallpaperService.kt` | The engine. One `refreshPlayback()` policy: play iff `visible && !powerPaused`. Debounced `onVisibilityChanged`, power/battery receivers, direct decode-to-surface (color) or Media3 effect pipeline (grayscale). |
+| `VideoImporter.kt` | Media3 Transformer: strip audio, cap resolution, optional FPS cap. |
+| `Settings.kt` | SharedPreferences schema; the wallpaper folder *is* the library (no DB). |
+| `MainActivity.kt` | Compose UI — set-flow, toggles, FPS selector, library grid, live engine status. |
 
-## Not yet done
+## Status
 
-- **On-device validation** (decode-stop, lock-bleed on Nothing OS) — the make-or-break gate.
-- Trim UI + true fps-cap on import (currently mute + downscale only).
-- Shizuku auto-rotate / scheduling tier.
+Working test build (v0.5). Verified on a Nothing Phone 3: renders behind the launcher,
+plays, scales correctly. **Battery pause-on-invisible** is wired and self-reports in-app
+(the `playback:` line) but not yet measured over a long session.
+
+**Not yet done:** trim UI, Shizuku auto-rotate / scheduling tier, cleanup of the debug
+status lines before a 1.0.
