@@ -3,6 +3,7 @@ package app.motionwall
 import android.app.WallpaperManager
 import android.content.ComponentName
 import android.content.Intent
+import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -102,8 +103,19 @@ class MainActivity : ComponentActivity() {
             ActivityResultContracts.OpenDocument()
         ) { uri -> uri?.let { importAndUse(it) } }
 
+        // Live engine status (written by the wallpaper service) — our eyes without adb.
+        var status by remember { mutableStateOf(prefs.getString("engine_status", "—").orEmpty()) }
+        DisposableEffect(Unit) {
+            val l = SharedPreferences.OnSharedPreferenceChangeListener { p, k ->
+                if (k == "engine_status") status = p.getString(k, "—").orEmpty()
+            }
+            prefs.registerOnSharedPreferenceChangeListener(l)
+            onDispose { prefs.unregisterOnSharedPreferenceChangeListener(l) }
+        }
+
         Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("MotionWall", color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text("engine: $status", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
 
             Button(onClick = ::setAsWallpaper, modifier = Modifier.fillMaxWidth()) { Text("Set as wallpaper") }
             OutlinedButton(onClick = { picker.launch(arrayOf("video/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Import a video") }
