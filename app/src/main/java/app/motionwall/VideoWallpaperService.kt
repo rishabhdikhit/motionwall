@@ -50,6 +50,7 @@ class VideoWallpaperService : WallpaperService() {
 
         private var visible = false
         private var powerPaused = false
+        private var zoomedAway = false     // launcher zoomed the wallpaper out (drawer/recents/shade)
         private var surfaceW = 0
         private var surfaceH = 0
 
@@ -109,6 +110,19 @@ class VideoWallpaperService : WallpaperService() {
             }, 300)
         }
 
+        // The app drawer / recents / shade don't fire onVisibilityChanged (still the
+        // launcher). But Pixel-style launchers zoom the wallpaper out for them — use that
+        // to stop decoding when the wallpaper isn't really being looked at. zoom: 0=home,
+        // 1=fully zoomed out.
+        override fun onZoomChanged(zoom: Float) {
+            val away = zoom >= 0.5f
+            if (away != zoomedAway) {
+                zoomedAway = away
+                Log.i(TAG, "zoom=$zoom away=$away")
+                refreshPlayback()
+            }
+        }
+
         override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
             when (key) {
                 Settings.KEY_GRAYSCALE, Settings.KEY_VIDEO, Settings.KEY_FIT -> buildPlayer()   // clean mode swap
@@ -138,7 +152,7 @@ class VideoWallpaperService : WallpaperService() {
                     videoScalingMode = if (fit) C.VIDEO_SCALING_MODE_SCALE_TO_FIT
                         else C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
                 }
-                playWhenReady = visible && !powerPaused
+                playWhenReady = visible && !powerPaused && !zoomedAway
                 prepare()
             }
             writeStatus("built gray=$gray fit=$fit surface=${surfaceW}x$surfaceH")
@@ -165,7 +179,7 @@ class VideoWallpaperService : WallpaperService() {
 
         // Pausing holds the last decoded frame on the surface (== macOS freeze).
         private fun refreshPlayback() {
-            player?.playWhenReady = visible && !powerPaused
+            player?.playWhenReady = visible && !powerPaused && !zoomedAway
         }
 
         private fun isPlugged(): Boolean {
