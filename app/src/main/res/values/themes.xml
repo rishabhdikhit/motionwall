@@ -6,10 +6,10 @@
         <item name="android:windowBackground">#0B0B0E</item>
     </style>
 
-    <!-- Branded splash: play-triangle mark on the dark background, then hand off. -->
+    <!-- Branded splash: Wally logo on its own navy, then hand off. -->
     <style name="Theme.MotionWall.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#0B0B0E</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="windowSplashScreenBackground">#030826</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/wally_icon</item>
         <item name="postSplashScreenTheme">@style/Theme.MotionWall</item>
     </style>
 </resources>

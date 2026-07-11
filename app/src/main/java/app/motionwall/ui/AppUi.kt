@@ -258,7 +258,7 @@ private fun SettingsScreen(env: UiEnv) {
             Text("playback: $play", color = TextPrimary, style = MaterialTheme.typography.bodyMedium)
             Text(status, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
         }
-        Text("MotionWall · battery-first video wallpaper", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+        Text("Wally · battery-first video wallpaper", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
     }
 }
 

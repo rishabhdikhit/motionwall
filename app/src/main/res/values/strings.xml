@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">MotionWall</string>
-    <string name="wallpaper_desc">Looping video on your home screen — pauses when you leave it.</string>
+    <string name="app_name">Wally</string>
+    <string name="wallpaper_desc">Living wallpaper on your home screen — pauses when you leave it.</string>
 </resources>
