@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Motion echo behind (loop / movement) -->
+    <path
+        android:pathData="M33,40 L58,54 L33,68 Z"
+        android:fillColor="#38FFFFFF" />
+    <!-- Main play triangle, rounded corners via matching round stroke -->
+    <path
+        android:pathData="M46,37 L75,54 L46,71 Z"
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round" />
+</vector>

@@ -1,0 +1,23 @@
+# Android / Gradle
+.gradle/
+build/
+app/build/
+local.properties
+*.apk
+*.aab
+captures/
+.cxx/
+
+# Kotlin
+.kotlin/
+
+# Signing secrets — keep OUT of the public repo
+*.keystore
+*.jks
+keystore.properties
+
+# OS / IDE
+.DS_Store
+*.log
+.idea/
+*.iml
