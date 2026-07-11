@@ -124,6 +124,7 @@ class MainActivity : ComponentActivity() {
 
             Button(onClick = ::setAsWallpaper, modifier = Modifier.fillMaxWidth()) { Text("Set as wallpaper") }
             OutlinedButton(onClick = { picker.launch(arrayOf("video/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Import a video") }
+            FpsSelector(prefs)
 
             PrefSwitch(prefs, Settings.KEY_FIT, "Fit whole video (no zoom/crop)", default = false)
             PrefSwitch(prefs, Settings.KEY_GRAYSCALE, "Grayscale", default = false)
@@ -154,7 +155,28 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun PrefSwitch(prefs: android.content.SharedPreferences, key: String, label: String, default: Boolean) {
+    private fun FpsSelector(prefs: SharedPreferences) {
+        var fps by remember { mutableIntStateOf(prefs.getInt(Settings.KEY_FPS, 0)) }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Import FPS — lower = smoother battery (applies to next import)",
+                color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(0 to "Original", 30 to "30", 24 to "24", 15 to "15").forEach { (v, label) ->
+                    val sel = v == fps
+                    Text(label,
+                        color = if (sel) Color.Black else Color.White,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (sel) Color.Cyan else Color.DarkGray)
+                            .clickable { fps = v; prefs.edit().putInt(Settings.KEY_FPS, v).apply() }
+                            .padding(horizontal = 14.dp, vertical = 8.dp))
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun PrefSwitch(prefs: SharedPreferences, key: String, label: String, default: Boolean) {
         var checked by remember { mutableStateOf(prefs.getBoolean(key, default)) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(label, color = Color.White, modifier = Modifier.weight(1f))

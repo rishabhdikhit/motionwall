@@ -2,9 +2,11 @@ package app.motionwall
 
 import android.content.Context
 import android.net.Uri
+import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.FrameDropEffect
 import androidx.media3.effect.Presentation
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
@@ -32,9 +34,14 @@ object VideoImporter {
     ) {
         val out = File(Settings.libraryDir(ctx), "wp_${System.currentTimeMillis()}.mp4")
 
+        val fps = Settings.prefs(ctx).getInt(Settings.KEY_FPS, 0)
+        val videoEffects = buildList<Effect> {
+            add(Presentation.createForHeight(MAX_HEIGHT))                 // downscale = smaller file
+            if (fps > 0) add(FrameDropEffect.createDefaultFrameDropEffect(fps.toFloat()))  // fewer frames = less decode
+        }
         val edited = EditedMediaItem.Builder(MediaItem.fromUri(source))
             .setRemoveAudio(true)
-            .setEffects(Effects(emptyList(), listOf(Presentation.createForHeight(MAX_HEIGHT))))
+            .setEffects(Effects(emptyList(), videoEffects))
             .build()
 
         Transformer.Builder(ctx)
