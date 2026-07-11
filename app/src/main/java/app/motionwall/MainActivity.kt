@@ -120,6 +120,7 @@ class MainActivity : ComponentActivity() {
             Button(onClick = ::setAsWallpaper, modifier = Modifier.fillMaxWidth()) { Text("Set as wallpaper") }
             OutlinedButton(onClick = { picker.launch(arrayOf("video/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Import a video") }
 
+            PrefSwitch(prefs, Settings.KEY_FIT, "Fit whole video (no zoom/crop)", default = false)
             PrefSwitch(prefs, Settings.KEY_GRAYSCALE, "Grayscale", default = false)
             PrefSwitch(prefs, Settings.KEY_PAUSE_ON_LOW_POWER, "Pause in battery-saver", default = false)
             PrefSwitch(prefs, Settings.KEY_PAUSE_ON_BATTERY, "Pause on battery (unplugged)", default = false)

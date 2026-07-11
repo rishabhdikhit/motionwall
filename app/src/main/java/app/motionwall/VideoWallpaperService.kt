@@ -65,7 +65,7 @@ class VideoWallpaperService : WallpaperService() {
                 } + " playing=${player?.isPlaying}")
             }
             override fun onVideoSizeChanged(size: VideoSize) =
-                writeStatus("video ${size.width}x${size.height}")
+                writeStatus("video ${size.width}x${size.height} surf ${surfaceW}x$surfaceH")
             override fun onPlayerError(error: PlaybackException) =
                 writeStatus("ERROR ${error.errorCodeName}: ${error.message}")
         }
@@ -105,7 +105,7 @@ class VideoWallpaperService : WallpaperService() {
 
         override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
             when (key) {
-                Settings.KEY_GRAYSCALE, Settings.KEY_VIDEO -> buildPlayer()   // clean mode swap
+                Settings.KEY_GRAYSCALE, Settings.KEY_VIDEO, Settings.KEY_FIT -> buildPlayer()   // clean mode swap
                 Settings.KEY_PAUSE_ON_LOW_POWER,
                 Settings.KEY_PAUSE_ON_BATTERY,
                 Settings.KEY_LOW_BATTERY_FREEZE -> applyPowerPolicy()
@@ -118,6 +118,7 @@ class VideoWallpaperService : WallpaperService() {
             releasePlayer()
             applyPowerPolicy(refresh = false)
             val gray = prefs.getBoolean(Settings.KEY_GRAYSCALE, false)
+            val fit = prefs.getBoolean(Settings.KEY_FIT, false)
             player = ExoPlayer.Builder(ctx).build().apply {
                 addListener(statusListener)
                 setMediaItem(MediaItem.fromUri(Settings.videoUri(ctx)))
@@ -125,21 +126,22 @@ class VideoWallpaperService : WallpaperService() {
                 volume = 0f
                 setVideoSurface(h.surface)
                 if (gray) {
-                    setVideoEffects(grayscaleEffects())
+                    setVideoEffects(grayscaleEffects(fit))
                 } else {
                     // Direct decode-to-surface: the proven, always-renders path.
-                    videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+                    videoScalingMode = if (fit) C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+                        else C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
                 }
                 playWhenReady = visible && !powerPaused
                 prepare()
             }
-            writeStatus("built gray=$gray visible=$visible paused=$powerPaused")
+            writeStatus("built gray=$gray fit=$fit surface=${surfaceW}x$surfaceH")
         }
 
-        private fun grayscaleEffects(): List<Effect> = buildList {
+        private fun grayscaleEffects(fit: Boolean): List<Effect> = buildList {
             if (surfaceW > 0 && surfaceH > 0) {
-                add(Presentation.createForWidthAndHeight(
-                    surfaceW, surfaceH, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP))
+                add(Presentation.createForWidthAndHeight(surfaceW, surfaceH,
+                    if (fit) Presentation.LAYOUT_SCALE_TO_FIT else Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP))
             }
             add(RgbFilter.createGrayscaleFilter())
         }
