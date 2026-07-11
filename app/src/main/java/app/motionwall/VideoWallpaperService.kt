@@ -68,6 +68,12 @@ class VideoWallpaperService : WallpaperService() {
                 writeStatus("video ${size.width}x${size.height} surf ${surfaceW}x$surfaceH")
             override fun onPlayerError(error: PlaybackException) =
                 writeStatus("ERROR ${error.errorCodeName}: ${error.message}")
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                Log.i(TAG, "isPlaying=$isPlaying")
+                prefs.edit().putString("engine_play",
+                    if (isPlaying) "▶ playing (home visible)"
+                    else "⏸ paused — 0 decode (off-home / screen off / low batt)").apply()
+            }
         }
 
         override fun onCreate(holder: SurfaceHolder) {
