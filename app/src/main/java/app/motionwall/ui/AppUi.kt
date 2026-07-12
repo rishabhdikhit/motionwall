@@ -208,9 +208,20 @@ private fun SettingsScreen(env: UiEnv) {
     ) {
         Text("Settings", color = TextPrimary, style = MaterialTheme.typography.headlineMedium)
 
+        val crash = remember { prefs.getString("last_crash", "").orEmpty() }
+        if (crash.isNotEmpty()) {
+            Surface(color = Color(0x33FF3B30), shape = MaterialTheme.shapes.medium) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Last crash", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    Text(crash, color = TextPrimary, style = MaterialTheme.typography.bodySmall)
+                    Text("Tap to clear", color = TextSecondary, style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.clickable { prefs.edit().remove("last_crash").apply() })
+                }
+            }
+        }
+
         SettingsGroup("Playback") {
-            ScaleRow(prefs)
-            SwitchRow(prefs, Settings.KEY_GRAYSCALE, "Grayscale", "Monochrome look", false)
+            SwitchRow(prefs, Settings.KEY_GRAYSCALE, "Grayscale", "Baked at import — applies to next import", false)
         }
         SettingsGroup("Battery") {
             SwitchRow(prefs, Settings.KEY_PAUSE_ON_LOW_POWER, "Pause in battery-saver", null, false)
@@ -248,26 +259,6 @@ private fun SwitchRow(prefs: SharedPreferences, key: String, title: String, subt
         }
         Switch(checked = checked, onCheckedChange = { checked = it; prefs.edit().putBoolean(key, it).apply() },
             colors = SwitchDefaults.colors(checkedTrackColor = Indigo, checkedThumbColor = Color.White))
-    }
-}
-
-@Composable
-private fun ScaleRow(prefs: SharedPreferences) {
-    var mode by remember { mutableStateOf(prefs.getString(Settings.KEY_SCALE, "fit") ?: "fit") }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Scaling", color = TextPrimary, style = MaterialTheme.typography.bodyLarge)
-        Text("Fit = whole video at native size (sharp). Fill = cover the screen.",
-            color = TextSecondary, style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("fit" to "Fit", "fill" to "Fill").forEach { (v, label) ->
-                val sel = v == mode
-                Text(label, color = if (sel) Color.White else TextSecondary,
-                    modifier = Modifier.clip(RoundedCornerShape(10.dp))
-                        .background(if (sel) Indigo else Color(0x14FFFFFF))
-                        .clickable { mode = v; prefs.edit().putString(Settings.KEY_SCALE, v).apply() }
-                        .padding(horizontal = 18.dp, vertical = 8.dp))
-            }
-        }
     }
 }
 

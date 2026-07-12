@@ -10,8 +10,7 @@ object Settings {
     const val PREFS = "motionwall"
 
     const val KEY_VIDEO = "video"                 // absolute file path, or "" => bundled sample
-    const val KEY_GRAYSCALE = "grayscale"         // Boolean (live, via GL shader)
-    const val KEY_SCALE = "scale_mode"            // "fit" (native aspect, sharp) | "fill" (cover, crop)
+    const val KEY_GRAYSCALE = "grayscale"         // Boolean — baked at import (see VideoImporter)
     const val KEY_FPS = "import_fps"              // Int target fps at import; 0 = keep original
     const val KEY_PAUSE_ON_LOW_POWER = "pause_low_power"  // Boolean
     const val KEY_PAUSE_ON_BATTERY = "pause_on_battery"   // Boolean

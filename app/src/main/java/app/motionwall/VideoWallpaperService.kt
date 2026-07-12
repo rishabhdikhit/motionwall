@@ -11,56 +11,45 @@ import android.os.Looper
 import android.os.PowerManager
 import android.service.wallpaper.WallpaperService
 import android.util.Log
-import android.view.Surface
 import android.view.SurfaceHolder
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 
 private const val TAG = "MotionWall"
 
 /**
- * Battery-first video wallpaper. Renders through our own GL pipeline (GLVideoRenderer) so
- * the video shows at its native aspect (sharp, no auto-zoom), with a live grayscale shader
- * and a fill option. If GL init fails on a device, falls back to the plain crop path so the
- * wallpaper still works (no black-screen regression). Plays only while home is visible and
- * no power rule pauses it.
+ * Battery-first video wallpaper. Plays a muted, looping ExoPlayer straight to the wallpaper
+ * surface (the proven, always-renders path) and stops decoding whenever the home screen
+ * isn't visible. Grayscale + native-aspect letterbox live in the wally-next playground
+ * (they need a GL pipeline that can crash on a raw wallpaper surface — kept out of the
+ * stable app until it's verified per-device).
  */
 class VideoWallpaperService : WallpaperService() {
 
     override fun onCreateEngine(): Engine = VideoEngine()
 
     @UnstableApi
-    private inner class VideoEngine : Engine(),
-        SharedPreferences.OnSharedPreferenceChangeListener {
+    private inner class VideoEngine : Engine(), SharedPreferences.OnSharedPreferenceChangeListener {
 
         private val ctx get() = this@VideoWallpaperService
         private var player: ExoPlayer? = null
-        private var renderer: GLVideoRenderer? = null
         private var holder: SurfaceHolder? = null
-        private var decided = false          // pipeline chosen (GL or fallback) — build once
         private val prefs get() = Settings.prefs(ctx)
         private val main = Handler(Looper.getMainLooper())
 
         private var visible = false
         private var powerPaused = false
         private var zoomedAway = false
-        private var surfaceW = 0
-        private var surfaceH = 0
 
         private val powerReceiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context?, i: Intent?) = applyPowerPolicy()
         }
 
-        private val playerListener = object : Player.Listener {
-            override fun onVideoSizeChanged(size: VideoSize) {
-                renderer?.setVideoSize(size.width, size.height)
-                writeStatus("video ${size.width}x${size.height} surf ${surfaceW}x$surfaceH")
-            }
+        private val listener = object : Player.Listener {
             override fun onPlayerError(e: PlaybackException) = writeStatus("ERROR ${e.errorCodeName}: ${e.message}")
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 prefs.edit().putString("engine_play",
@@ -83,28 +72,18 @@ class VideoWallpaperService : WallpaperService() {
         override fun onSurfaceCreated(h: SurfaceHolder) {
             holder = h
             visible = isVisible
-            decided = false
             applyPowerPolicy(refresh = false)
-            // Try the GL pipeline; it calls back with an input surface, or reports failure.
-            val gl = GLVideoRenderer(
-                output = h.surface,
-                onInputSurface = { surf -> main.post { if (!decided) { decided = true; buildPlayer(surf) } } },
-                onStatus = { s ->
-                    writeStatus(s)
-                    if (s.contains("FAILED") && !decided) main.post { if (!decided) { decided = true; buildFallback() } }
-                },
-            ).apply {
-                grayscale = prefs.getBoolean(Settings.KEY_GRAYSCALE, false)
-                scale = prefs.getString(Settings.KEY_SCALE, "fit") ?: "fit"
-                resize(surfaceW.coerceAtLeast(1), surfaceH.coerceAtLeast(1))
+            player = ExoPlayer.Builder(ctx).build().apply {
+                addListener(listener)
+                setMediaItem(MediaItem.fromUri(Settings.videoUri(ctx)))
+                repeatMode = Player.REPEAT_MODE_ALL
+                volume = 0f
+                setVideoSurface(h.surface)
+                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+                playWhenReady = visible && !powerPaused && !zoomedAway
+                prepare()
             }
-            renderer = gl
-            gl.start()
-        }
-
-        override fun onSurfaceChanged(h: SurfaceHolder, format: Int, width: Int, height: Int) {
-            surfaceW = width; surfaceH = height
-            renderer?.resize(width, height)
+            writeStatus("playing · visible=$visible")
         }
 
         override fun onVisibilityChanged(isVisible: Boolean) {
@@ -120,44 +99,12 @@ class VideoWallpaperService : WallpaperService() {
 
         override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
             when (key) {
-                Settings.KEY_GRAYSCALE -> renderer?.grayscale = prefs.getBoolean(key, false)   // live, no rebuild
-                Settings.KEY_SCALE -> renderer?.scale = prefs.getString(key, "fit") ?: "fit"
                 Settings.KEY_VIDEO -> player?.apply {
                     setMediaItem(MediaItem.fromUri(Settings.videoUri(ctx))); prepare(); refreshPlayback()
                 }
                 Settings.KEY_PAUSE_ON_LOW_POWER, Settings.KEY_PAUSE_ON_BATTERY, Settings.KEY_LOW_BATTERY_FREEZE ->
                     applyPowerPolicy()
             }
-        }
-
-        private fun buildPlayer(inputSurface: Surface) {
-            player = ExoPlayer.Builder(ctx).build().apply {
-                addListener(playerListener)
-                setMediaItem(MediaItem.fromUri(Settings.videoUri(ctx)))
-                repeatMode = Player.REPEAT_MODE_ALL
-                volume = 0f
-                setVideoSurface(inputSurface)
-                playWhenReady = visible && !powerPaused && !zoomedAway
-                prepare()
-            }
-            writeStatus("GL pipeline · visible=$visible")
-        }
-
-        // GL unavailable → plain decoder-to-surface, cropped. No grayscale/letterbox, but works.
-        private fun buildFallback() {
-            val h = holder ?: return
-            renderer?.release(); renderer = null
-            player = ExoPlayer.Builder(ctx).build().apply {
-                addListener(playerListener)
-                setMediaItem(MediaItem.fromUri(Settings.videoUri(ctx)))
-                repeatMode = Player.REPEAT_MODE_ALL
-                volume = 0f
-                setVideoSurface(h.surface)
-                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
-                playWhenReady = visible && !powerPaused && !zoomedAway
-                prepare()
-            }
-            writeStatus("fallback (crop) · GL failed")
         }
 
         private fun applyPowerPolicy(refresh: Boolean = true) {
@@ -187,21 +134,15 @@ class VideoWallpaperService : WallpaperService() {
             prefs.edit().putString("engine_status", msg).apply()
         }
 
-        private fun releaseAll() {
-            player?.release(); player = null
-            renderer?.release(); renderer = null
-        }
-
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
-            releaseAll()
-            this.holder = null
+            player?.release(); player = null; this.holder = null
         }
 
         override fun onDestroy() {
             main.removeCallbacksAndMessages(null)
             prefs.unregisterOnSharedPreferenceChangeListener(this)
             runCatching { unregisterReceiver(powerReceiver) }
-            releaseAll()
+            player?.release(); player = null
             super.onDestroy()
         }
     }

@@ -28,6 +28,12 @@ class MainActivity : ComponentActivity() {
     private val applyActive = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Capture crashes to a pref (shown in Settings next launch) — diagnostics without adb.
+        val prev = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            runCatching { Settings.prefs(this).edit().putString("last_crash", e.stackTraceToString().take(2000)).commit() }
+            prev?.uncaughtException(t, e)
+        }
         val splash = installSplashScreen()
         var keepSplash = true
         splash.setKeepOnScreenCondition { keepSplash }

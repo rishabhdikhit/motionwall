@@ -8,6 +8,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.FrameDropEffect
 import androidx.media3.effect.Presentation
+import androidx.media3.effect.RgbFilter
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
@@ -34,10 +35,14 @@ object VideoImporter {
     ) {
         val out = File(Settings.libraryDir(ctx), "wp_${System.currentTimeMillis()}.mp4")
 
-        val fps = Settings.prefs(ctx).getInt(Settings.KEY_FPS, 0)
+        val prefs = Settings.prefs(ctx)
+        val fps = prefs.getInt(Settings.KEY_FPS, 0)
+        // Grayscale is baked in here (Transformer's GL runs off-screen for encoding, which
+        // works — unlike the live effect pipeline on a raw wallpaper surface).
         val videoEffects = buildList<Effect> {
             add(Presentation.createForHeight(MAX_HEIGHT))                 // downscale = smaller file
             if (fps > 0) add(FrameDropEffect.createDefaultFrameDropEffect(fps.toFloat()))  // fewer frames = less decode
+            if (prefs.getBoolean(Settings.KEY_GRAYSCALE, false)) add(RgbFilter.createGrayscaleFilter())
         }
         val edited = EditedMediaItem.Builder(MediaItem.fromUri(source))
             .setRemoveAudio(true)
