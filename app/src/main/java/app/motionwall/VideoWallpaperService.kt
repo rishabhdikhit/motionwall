@@ -102,7 +102,9 @@ class VideoWallpaperService : WallpaperService() {
         // the peak zoom so we can tell whether this launcher even emits a zoom for the drawer.
         override fun onZoomChanged(zoom: Float) {
             if (zoom > peakZoom) { peakZoom = zoom; writeDiag() }
-            val away = zoom >= 0.3f
+            // Pause as soon as the launcher starts zooming out (drawer/recents/shade). Home
+            // sits at zoom 0, so a low threshold is safe and stops decode near-instantly.
+            val away = zoom >= 0.1f
             if (away != zoomedAway) { zoomedAway = away; refreshPlayback() }
         }
 
