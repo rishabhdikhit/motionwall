@@ -23,11 +23,12 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
@@ -78,7 +79,6 @@ fun AppRoot(env: UiEnv) {
     var fullscreen by remember { mutableStateOf<File?>(null) }
 
     val tabs = listOf(
-        Tab("home", "Home") { Icon(Icons.Rounded.Home, null) },
         Tab("library", "Library") { Icon(Icons.Rounded.PhotoLibrary, null) },
         Tab("settings", "Settings") { Icon(Icons.Rounded.Settings, null) },
     )
@@ -105,8 +105,7 @@ fun AppRoot(env: UiEnv) {
                 }
             }
         ) { pad ->
-            NavHost(nav, startDestination = "home", modifier = Modifier.padding(pad)) {
-                composable("home") { HomeScreen(env, library) }
+            NavHost(nav, startDestination = "library", modifier = Modifier.padding(pad)) {
                 composable("library") { LibraryScreen(env, library, onOpen = { fullscreen = it }) }
                 composable("settings") { SettingsScreen(env) }
             }
@@ -122,46 +121,6 @@ fun AppRoot(env: UiEnv) {
         }
 
         ApplyOverlay(active = env.applyActive, onComplete = env.onApplyComplete)
-    }
-}
-
-/* ----------------------------------- Home ----------------------------------- */
-
-@Composable
-private fun HomeScreen(env: UiEnv, library: List<File>) {
-    val ctx = LocalContext.current
-    val activeUri = remember(env.activePath, env.libraryVersion) { Settings.videoUri(ctx) }
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
-    ) {
-        Column {
-            Text("Hi.", color = TextPrimary, style = MaterialTheme.typography.displaySmall)
-            Text("Choose today's wallpaper.", color = TextSecondary, style = MaterialTheme.typography.bodyLarge)
-        }
-
-        // Hero preview
-        Box(
-            Modifier.fillMaxWidth().aspectRatio(0.62f).clip(RoundedCornerShape(28.dp))
-                .background(Card).border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(28.dp))
-        ) {
-            VideoPreview(activeUri, Modifier.fillMaxSize())
-        }
-
-        PillButton("Apply", onClick = env.onApply)
-
-        if (library.isNotEmpty()) {
-            Text("Recent", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(library.take(12), key = { it.absolutePath }) { f ->
-                    Thumb(
-                        f, active = f.absolutePath == env.activePath,
-                        modifier = Modifier.width(96.dp).aspectRatio(0.62f),
-                        onClick = { env.onSetActive(f) }
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -215,6 +174,13 @@ private fun LibraryCard(file: File, active: Boolean, onTap: () -> Unit, onLong: 
         ) {
             Thumb(file, active = active, modifier = Modifier.fillMaxSize(), onClick = onTap,
                 onLong = onLong, interaction = press, showPlay = true)
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(6.dp).size(30.dp)
+                    .clip(CircleShape).background(Color(0x99000000)).clickable(onClick = onDelete),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Rounded.Delete, "Delete", tint = Color.White, modifier = Modifier.size(17.dp))
+            }
         }
         Spacer(Modifier.height(8.dp))
         Text(meta, color = TextSecondary, style = MaterialTheme.typography.bodySmall)
@@ -243,7 +209,7 @@ private fun SettingsScreen(env: UiEnv) {
         Text("Settings", color = TextPrimary, style = MaterialTheme.typography.headlineMedium)
 
         SettingsGroup("Playback") {
-            SwitchRow(prefs, Settings.KEY_FIT, "Fit whole video", "Show the full clip instead of cropping", false)
+            ScaleRow(prefs)
             SwitchRow(prefs, Settings.KEY_GRAYSCALE, "Grayscale", "Monochrome look", false)
         }
         SettingsGroup("Battery") {
@@ -286,6 +252,26 @@ private fun SwitchRow(prefs: SharedPreferences, key: String, title: String, subt
 }
 
 @Composable
+private fun ScaleRow(prefs: SharedPreferences) {
+    var mode by remember { mutableStateOf(prefs.getString(Settings.KEY_SCALE, "fit") ?: "fit") }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Scaling", color = TextPrimary, style = MaterialTheme.typography.bodyLarge)
+        Text("Fit = whole video at native size (sharp). Fill = cover the screen.",
+            color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("fit" to "Fit", "fill" to "Fill").forEach { (v, label) ->
+                val sel = v == mode
+                Text(label, color = if (sel) Color.White else TextSecondary,
+                    modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                        .background(if (sel) Indigo else Color(0x14FFFFFF))
+                        .clickable { mode = v; prefs.edit().putString(Settings.KEY_SCALE, v).apply() }
+                        .padding(horizontal = 18.dp, vertical = 8.dp))
+            }
+        }
+    }
+}
+
+@Composable
 private fun FpsRow(prefs: SharedPreferences) {
     var fps by remember { mutableIntStateOf(prefs.getInt(Settings.KEY_FPS, 0)) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -304,18 +290,6 @@ private fun FpsRow(prefs: SharedPreferences) {
 }
 
 /* -------------------------------- components -------------------------------- */
-
-@Composable
-fun PillButton(text: String, onClick: () -> Unit) {
-    Box(
-        Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(28.dp))
-            .background(Brush.horizontalGradient(listOf(Indigo, Purple)))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text, color = Color.White, style = MaterialTheme.typography.labelLarge)
-    }
-}
 
 @Composable
 private fun Thumb(
@@ -360,6 +334,8 @@ private fun videoMeta(file: File): String {
         r.setDataSource(file.absolutePath)
         val ms = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0
         val mb = file.length() / 1_000_000.0
-        "%.0fs · %.1f MB".format(ms / 1000.0, mb)
+        val frames = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)?.toLongOrNull()
+        val fps = if (frames != null && ms > 0) " · %.0ffps".format(frames * 1000.0 / ms) else ""
+        "%.0fs · %.1f MB%s".format(ms / 1000.0, mb, fps)
     } catch (e: Exception) { "" } finally { r.release() }
 }

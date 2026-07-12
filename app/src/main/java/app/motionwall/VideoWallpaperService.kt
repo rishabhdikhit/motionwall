@@ -11,28 +11,24 @@ import android.os.Looper
 import android.os.PowerManager
 import android.service.wallpaper.WallpaperService
 import android.util.Log
+import android.view.Surface
 import android.view.SurfaceHolder
 import androidx.media3.common.C
-import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.effect.Presentation
-import androidx.media3.effect.RgbFilter
 import androidx.media3.exoplayer.ExoPlayer
 
 private const val TAG = "MotionWall"
 
 /**
- * Battery-first video wallpaper. Plays a muted, looping player IFF the home screen is
- * visible AND no power rule pauses it — decoding stops otherwise, no wake lock.
- *
- * Color (default) path renders the decoder STRAIGHT to the surface (no setVideoEffects at
- * all — even an empty effects list forces the GL graph, which renders black on a raw
- * wallpaper surface). Grayscale is the only path that engages Media3 effects; toggling it
- * rebuilds the player so effects mode is entered/left cleanly.
+ * Battery-first video wallpaper. Renders through our own GL pipeline (GLVideoRenderer) so
+ * the video shows at its native aspect (sharp, no auto-zoom), with a live grayscale shader
+ * and a fill option. If GL init fails on a device, falls back to the plain crop path so the
+ * wallpaper still works (no black-screen regression). Plays only while home is visible and
+ * no power rule pauses it.
  */
 class VideoWallpaperService : WallpaperService() {
 
@@ -44,13 +40,15 @@ class VideoWallpaperService : WallpaperService() {
 
         private val ctx get() = this@VideoWallpaperService
         private var player: ExoPlayer? = null
+        private var renderer: GLVideoRenderer? = null
         private var holder: SurfaceHolder? = null
+        private var decided = false          // pipeline chosen (GL or fallback) — build once
         private val prefs get() = Settings.prefs(ctx)
-        private val handler = Handler(Looper.getMainLooper())
+        private val main = Handler(Looper.getMainLooper())
 
         private var visible = false
         private var powerPaused = false
-        private var zoomedAway = false     // launcher zoomed the wallpaper out (drawer/recents/shade)
+        private var zoomedAway = false
         private var surfaceW = 0
         private var surfaceH = 0
 
@@ -58,22 +56,16 @@ class VideoWallpaperService : WallpaperService() {
             override fun onReceive(c: Context?, i: Intent?) = applyPowerPolicy()
         }
 
-        private val statusListener = object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) {
-                writeStatus("state=" + when (state) {
-                    Player.STATE_IDLE -> "IDLE"; Player.STATE_BUFFERING -> "BUFFERING"
-                    Player.STATE_READY -> "READY"; else -> "ENDED"
-                } + " playing=${player?.isPlaying}")
-            }
-            override fun onVideoSizeChanged(size: VideoSize) =
+        private val playerListener = object : Player.Listener {
+            override fun onVideoSizeChanged(size: VideoSize) {
+                renderer?.setVideoSize(size.width, size.height)
                 writeStatus("video ${size.width}x${size.height} surf ${surfaceW}x$surfaceH")
-            override fun onPlayerError(error: PlaybackException) =
-                writeStatus("ERROR ${error.errorCodeName}: ${error.message}")
+            }
+            override fun onPlayerError(e: PlaybackException) = writeStatus("ERROR ${e.errorCodeName}: ${e.message}")
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                Log.i(TAG, "isPlaying=$isPlaying")
                 prefs.edit().putString("engine_play",
                     if (isPlaying) "▶ playing (home visible)"
-                    else "⏸ paused — 0 decode (off-home / screen off / low batt)").apply()
+                    else "⏸ paused — 0 decode (off-home / drawer / screen off / low batt)").apply()
             }
         }
 
@@ -90,80 +82,82 @@ class VideoWallpaperService : WallpaperService() {
 
         override fun onSurfaceCreated(h: SurfaceHolder) {
             holder = h
-            visible = isVisible          // seed, don't wait for the callback
-            buildPlayer()
+            visible = isVisible
+            decided = false
+            applyPowerPolicy(refresh = false)
+            // Try the GL pipeline; it calls back with an input surface, or reports failure.
+            val gl = GLVideoRenderer(
+                output = h.surface,
+                onInputSurface = { surf -> main.post { if (!decided) { decided = true; buildPlayer(surf) } } },
+                onStatus = { s ->
+                    writeStatus(s)
+                    if (s.contains("FAILED") && !decided) main.post { if (!decided) { decided = true; buildFallback() } }
+                },
+            ).apply {
+                grayscale = prefs.getBoolean(Settings.KEY_GRAYSCALE, false)
+                scale = prefs.getString(Settings.KEY_SCALE, "fit") ?: "fit"
+                resize(surfaceW.coerceAtLeast(1), surfaceH.coerceAtLeast(1))
+            }
+            renderer = gl
+            gl.start()
         }
 
         override fun onSurfaceChanged(h: SurfaceHolder, format: Int, width: Int, height: Int) {
-            val changed = width != surfaceW || height != surfaceH
             surfaceW = width; surfaceH = height
-            // Grayscale crop needs the surface size; rebuild once we know it.
-            if (changed && prefs.getBoolean(Settings.KEY_GRAYSCALE, false)) buildPlayer()
+            renderer?.resize(width, height)
         }
 
         override fun onVisibilityChanged(isVisible: Boolean) {
-            handler.removeCallbacksAndMessages(null)
-            handler.postDelayed({           // debounce app-switch/transition thrash (~macOS 0.4s)
-                visible = isVisible
-                Log.i(TAG, "visible=$isVisible")
-                refreshPlayback()
-            }, 300)
+            main.removeCallbacksAndMessages(null)
+            main.postDelayed({ visible = isVisible; Log.i(TAG, "visible=$isVisible"); refreshPlayback() }, 300)
         }
 
-        // The app drawer / recents / shade don't fire onVisibilityChanged (still the
-        // launcher). But Pixel-style launchers zoom the wallpaper out for them — use that
-        // to stop decoding when the wallpaper isn't really being looked at. zoom: 0=home,
-        // 1=fully zoomed out.
+        // App drawer / recents / shade zoom the wallpaper out — pause for those too.
         override fun onZoomChanged(zoom: Float) {
             val away = zoom >= 0.5f
-            if (away != zoomedAway) {
-                zoomedAway = away
-                Log.i(TAG, "zoom=$zoom away=$away")
-                refreshPlayback()
-            }
+            if (away != zoomedAway) { zoomedAway = away; refreshPlayback() }
         }
 
         override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
             when (key) {
-                Settings.KEY_GRAYSCALE, Settings.KEY_VIDEO, Settings.KEY_FIT -> buildPlayer()   // clean mode swap
-                Settings.KEY_PAUSE_ON_LOW_POWER,
-                Settings.KEY_PAUSE_ON_BATTERY,
-                Settings.KEY_LOW_BATTERY_FREEZE -> applyPowerPolicy()
-                // ignore others (e.g. engine_status written by writeStatus)
+                Settings.KEY_GRAYSCALE -> renderer?.grayscale = prefs.getBoolean(key, false)   // live, no rebuild
+                Settings.KEY_SCALE -> renderer?.scale = prefs.getString(key, "fit") ?: "fit"
+                Settings.KEY_VIDEO -> player?.apply {
+                    setMediaItem(MediaItem.fromUri(Settings.videoUri(ctx))); prepare(); refreshPlayback()
+                }
+                Settings.KEY_PAUSE_ON_LOW_POWER, Settings.KEY_PAUSE_ON_BATTERY, Settings.KEY_LOW_BATTERY_FREEZE ->
+                    applyPowerPolicy()
             }
         }
 
-        private fun buildPlayer() {
-            val h = holder ?: return
-            releasePlayer()
-            applyPowerPolicy(refresh = false)
-            val gray = prefs.getBoolean(Settings.KEY_GRAYSCALE, false)
-            val fit = prefs.getBoolean(Settings.KEY_FIT, false)
+        private fun buildPlayer(inputSurface: Surface) {
             player = ExoPlayer.Builder(ctx).build().apply {
-                addListener(statusListener)
+                addListener(playerListener)
+                setMediaItem(MediaItem.fromUri(Settings.videoUri(ctx)))
+                repeatMode = Player.REPEAT_MODE_ALL
+                volume = 0f
+                setVideoSurface(inputSurface)
+                playWhenReady = visible && !powerPaused && !zoomedAway
+                prepare()
+            }
+            writeStatus("GL pipeline · visible=$visible")
+        }
+
+        // GL unavailable → plain decoder-to-surface, cropped. No grayscale/letterbox, but works.
+        private fun buildFallback() {
+            val h = holder ?: return
+            renderer?.release(); renderer = null
+            player = ExoPlayer.Builder(ctx).build().apply {
+                addListener(playerListener)
                 setMediaItem(MediaItem.fromUri(Settings.videoUri(ctx)))
                 repeatMode = Player.REPEAT_MODE_ALL
                 volume = 0f
                 setVideoSurface(h.surface)
-                if (gray) {
-                    setVideoEffects(grayscaleEffects(fit))
-                } else {
-                    // Direct decode-to-surface: the proven, always-renders path.
-                    videoScalingMode = if (fit) C.VIDEO_SCALING_MODE_SCALE_TO_FIT
-                        else C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
-                }
+                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
                 playWhenReady = visible && !powerPaused && !zoomedAway
                 prepare()
             }
-            writeStatus("built gray=$gray fit=$fit surface=${surfaceW}x$surfaceH")
-        }
-
-        private fun grayscaleEffects(fit: Boolean): List<Effect> = buildList {
-            if (surfaceW > 0 && surfaceH > 0) {
-                add(Presentation.createForWidthAndHeight(surfaceW, surfaceH,
-                    if (fit) Presentation.LAYOUT_SCALE_TO_FIT else Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP))
-            }
-            add(RgbFilter.createGrayscaleFilter())
+            writeStatus("fallback (crop) · GL failed")
         }
 
         private fun applyPowerPolicy(refresh: Boolean = true) {
@@ -172,12 +166,10 @@ class VideoWallpaperService : WallpaperService() {
             powerPaused =
                 (prefs.getBoolean(Settings.KEY_PAUSE_ON_LOW_POWER, false) && pm.isPowerSaveMode) ||
                 (prefs.getBoolean(Settings.KEY_PAUSE_ON_BATTERY, false) && !plugged) ||
-                (prefs.getBoolean(Settings.KEY_LOW_BATTERY_FREEZE, true) &&
-                    batteryPct() <= Settings.LOW_BATTERY_PCT && !plugged)
+                (prefs.getBoolean(Settings.KEY_LOW_BATTERY_FREEZE, true) && batteryPct() <= Settings.LOW_BATTERY_PCT && !plugged)
             if (refresh) refreshPlayback()
         }
 
-        // Pausing holds the last decoded frame on the surface (== macOS freeze).
         private fun refreshPlayback() {
             player?.playWhenReady = visible && !powerPaused && !zoomedAway
         }
@@ -188,29 +180,28 @@ class VideoWallpaperService : WallpaperService() {
         }
 
         private fun batteryPct(): Int =
-            (getSystemService(BATTERY_SERVICE) as BatteryManager)
-                .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            (getSystemService(BATTERY_SERVICE) as BatteryManager).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
 
         private fun writeStatus(msg: String) {
             Log.i(TAG, msg)
             prefs.edit().putString("engine_status", msg).apply()
         }
 
-        private fun releasePlayer() {
-            player?.release()
-            player = null
+        private fun releaseAll() {
+            player?.release(); player = null
+            renderer?.release(); renderer = null
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
-            releasePlayer()
+            releaseAll()
             this.holder = null
         }
 
         override fun onDestroy() {
-            handler.removeCallbacksAndMessages(null)
+            main.removeCallbacksAndMessages(null)
             prefs.unregisterOnSharedPreferenceChangeListener(this)
             runCatching { unregisterReceiver(powerReceiver) }
-            releasePlayer()
+            releaseAll()
             super.onDestroy()
         }
     }
