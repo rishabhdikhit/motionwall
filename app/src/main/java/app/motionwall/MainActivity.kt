@@ -63,11 +63,11 @@ class MainActivity : ComponentActivity() {
             onImport = { picker.launch(arrayOf("video/*")) },
             onSetActive = ::setActive,
             onDelete = ::deleteClip,
-            onApply = { applyActive.value = true },
-            onApplyComplete = {
-                applyActive.value = false
-                if (!isMotionWallActive()) startActivity(changeWallpaperIntent())
-            },
+            // Always open the system live-wallpaper preview so you see it and can choose the
+            // target (home / lock / both — whatever Nothing OS offers). The selected clip is
+            // already active, so the preview shows it.
+            onApply = { startActivity(changeWallpaperIntent()) },
+            onApplyComplete = { applyActive.value = false },
         )
     }
 
@@ -103,8 +103,4 @@ class MainActivity : ComponentActivity() {
     private fun changeWallpaperIntent() = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
         .putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
             ComponentName(this, VideoWallpaperService::class.java))
-
-    private fun isMotionWallActive(): Boolean =
-        WallpaperManager.getInstance(this).wallpaperInfo?.component ==
-            ComponentName(this, VideoWallpaperService::class.java)
 }
