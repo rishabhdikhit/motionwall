@@ -44,6 +44,7 @@ class VideoWallpaperService : WallpaperService() {
         private var visible = false
         private var powerPaused = false
         private var zoomedAway = false
+        private var peakZoom = 0f
 
         private val powerReceiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context?, i: Intent?) = applyPowerPolicy()
@@ -88,12 +89,20 @@ class VideoWallpaperService : WallpaperService() {
 
         override fun onVisibilityChanged(isVisible: Boolean) {
             main.removeCallbacksAndMessages(null)
-            main.postDelayed({ visible = isVisible; Log.i(TAG, "visible=$isVisible"); refreshPlayback() }, 300)
+            if (!isVisible) {
+                // Pause IMMEDIATELY when leaving home (battery first; a debounce here can
+                // settle on a spurious "visible" during the app-open animation and never pause).
+                visible = false; refreshPlayback(); writeDiag()
+            } else {
+                main.postDelayed({ visible = true; refreshPlayback(); writeDiag() }, 250)
+            }
         }
 
-        // App drawer / recents / shade zoom the wallpaper out — pause for those too.
+        // App drawer / recents / shade zoom the wallpaper out — pause for those too. Record
+        // the peak zoom so we can tell whether this launcher even emits a zoom for the drawer.
         override fun onZoomChanged(zoom: Float) {
-            val away = zoom >= 0.5f
+            if (zoom > peakZoom) { peakZoom = zoom; writeDiag() }
+            val away = zoom >= 0.3f
             if (away != zoomedAway) { zoomedAway = away; refreshPlayback() }
         }
 
@@ -136,6 +145,13 @@ class VideoWallpaperService : WallpaperService() {
         private fun writeStatus(msg: String) {
             Log.i(TAG, msg)
             prefs.edit().putString("engine_status", msg).apply()
+        }
+
+        // Single-glance diagnostic for the pause behavior: whether we saw home hidden, and
+        // how much (if at all) the drawer zooms the wallpaper on this launcher.
+        private fun writeDiag() {
+            prefs.edit().putString("engine_status",
+                "visible=$visible · zoomPeak=%.2f · powerPaused=$powerPaused".format(peakZoom)).apply()
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
