@@ -79,7 +79,7 @@ class VideoWallpaperService : WallpaperService() {
                 repeatMode = Player.REPEAT_MODE_ALL
                 volume = 0f
                 setVideoSurface(h.surface)
-                videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+                videoScalingMode = scalingMode()
                 playWhenReady = visible && !powerPaused && !zoomedAway
                 prepare()
             }
@@ -99,6 +99,7 @@ class VideoWallpaperService : WallpaperService() {
 
         override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
             when (key) {
+                Settings.KEY_FIT -> player?.videoScalingMode = scalingMode()   // live, no rebuild
                 Settings.KEY_VIDEO -> player?.apply {
                     setMediaItem(MediaItem.fromUri(Settings.videoUri(ctx))); prepare(); refreshPlayback()
                 }
@@ -106,6 +107,9 @@ class VideoWallpaperService : WallpaperService() {
                     applyPowerPolicy()
             }
         }
+
+        private fun scalingMode() = if (prefs.getBoolean(Settings.KEY_FIT, false))
+            C.VIDEO_SCALING_MODE_SCALE_TO_FIT else C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
 
         private fun applyPowerPolicy(refresh: Boolean = true) {
             val pm = getSystemService(POWER_SERVICE) as PowerManager

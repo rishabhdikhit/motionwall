@@ -11,6 +11,7 @@ object Settings {
 
     const val KEY_VIDEO = "video"                 // absolute file path, or "" => bundled sample
     const val KEY_GRAYSCALE = "grayscale"         // Boolean — baked at import (see VideoImporter)
+    const val KEY_FIT = "fit_mode"                // Boolean: true = fit whole video, false = fill/crop
     const val KEY_FPS = "import_fps"              // Int target fps at import; 0 = keep original
     const val KEY_PAUSE_ON_LOW_POWER = "pause_low_power"  // Boolean
     const val KEY_PAUSE_ON_BATTERY = "pause_on_battery"   // Boolean

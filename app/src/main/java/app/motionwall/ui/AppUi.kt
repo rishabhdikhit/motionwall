@@ -221,6 +221,7 @@ private fun SettingsScreen(env: UiEnv) {
         }
 
         SettingsGroup("Playback") {
+            SwitchRow(prefs, Settings.KEY_FIT, "Fit whole video", "Show the whole frame instead of cropping", false)
             SwitchRow(prefs, Settings.KEY_GRAYSCALE, "Grayscale", "Baked at import — applies to next import", false)
         }
         SettingsGroup("Battery") {
